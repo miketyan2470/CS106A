@@ -6,16 +6,17 @@
 import acm.graphics.*;
 import acm.program.*;
 import acm.util.*;
+
 import java.applet.*;
 import java.awt.*;
 import java.awt.event.*;
 
 public class Breakout extends GraphicsProgram {
 
-
 	public static final int APPLICATION_WIDTH = 400; 	/* Width and height of application window in pixels */
 	public static final int APPLICATION_HEIGHT = 600;
 	private static final int WIDTH = APPLICATION_WIDTH; /* Dimensions of game board (usually the same) */
+	@SuppressWarnings("unused")
 	private static final int HEIGHT = APPLICATION_HEIGHT;
 	private static final int PADDLE_WIDTH = 60; 		/* Dimensions of the paddle */
 	private static final int PADDLE_HEIGHT = 10;
@@ -31,33 +32,79 @@ public class Breakout extends GraphicsProgram {
 	private static final int NTURNS = 3; 				/* Number of turns */
 	private static final double MAX_X_VELOCITY = 3.0; 	/* Maximum and minimum velocity for x */
 	private static final double MIN_X_VELOCITY = 1.0;
-	private static final int SPEED = 10;
+	private static final int SPEED = 8;
 	
 	private RandomGenerator rgen = RandomGenerator.getInstance();
+	private AudioClip bounceClip = MediaTools.loadAudioClip("bounce.au");
+	private AudioClip gameOverClip = MediaTools.loadAudioClip("gameover.wav");
+	private AudioClip congrats = MediaTools.loadAudioClip("winner.wav");
 	
 	private double vy;
 	private double vx;
 	public GRect paddle;
 	public GOval ball;
+	public GLabel gameOver;
+	public GLabel results;
+	public GLabel retry;
+	public GLabel info;
+	int score;
+	int credits;
+	int brickCount;
 	
 /* Runs the Breakout program. */
 	public void run() {
+		credits = NTURNS;
+		brickCount = NBRICKS_PER_ROW * NBRICK_ROWS;
+		score = 0;
 		setBackground(Color.BLACK);
 		setup();
-		while (NTURNS > 0) {
-			play();
-		}
+		play();
 	}
 	
 	private void play() {
+		checkCredits();
 		waitForClick();
 		moveBall();
+	}
+	
+	private void checkCredits() {
+		if (credits == 0) {
+			remove(ball);
+			gameOverClip.play();
+			displayResults();
+			displayGameOver();
+			displayRetry();
+			waitForClick();
+			removeAll();
+			run();
+		}
+	}
+	
+	private void displayRetry() {
+		retry = new GLabel("Click anywhere to retry.");
+		retry.setColor(Color.WHITE);
+		retry.setFont("ComicSans-16");
+		add(retry, (getWidth() - retry.getWidth()) / 2, (getHeight() / 2 + (2 * retry.getAscent())));
+	}
+	
+	private void displayGameOver() {
+		gameOver = new GLabel("GAMEOVER");
+		gameOver.setColor(Color.RED);
+		gameOver.setFont("ComicSans-bold-36");
+		add(gameOver, (getWidth() - gameOver.getWidth()) / 2, (getHeight() - gameOver.getAscent()) / 2);
+	}
+	
+	private void displayResults() {
+		results = new GLabel("You only had " + brickCount + " bricks left!");
+		results.setColor(Color.RED);
+		results.setFont("ComicSans-bold-24");
+		add(results, (getWidth() - results.getWidth()) / 2, (getHeight() + results.getAscent()) / 2);
 	}
 	
 	private void moveBall() {
 		vy = 3.0;
 		vx = rgen.nextDouble(MIN_X_VELOCITY, MAX_X_VELOCITY);
-		while (true) {
+		while (credits > 0) {
 			ball.move(vx, vy);
 			pause(SPEED);
 			double x = ball.getX();
@@ -69,18 +116,52 @@ public class Breakout extends GraphicsProgram {
 				vy = -vy;
 			}
 			checkForCollision();
+			if (y > getHeight()) {
+				credits--;
+				remove(ball);
+				remove(info);
+				drawInfo();
+				break;
+			}
 		}
-		
+		drawBall();
+		play();
 	}
 	
 	private void checkForCollision() {
 		GObject collider = getCollidingObject();
 		if (collider == paddle) {
-			vy = -vy;
-		} else if (collider != null) {
+			double paddleYEdge = (getHeight() - (PADDLE_Y_OFFSET + PADDLE_HEIGHT) - BALL_RADIUS * 2);
+			if (ball.getY() >= paddleYEdge && ball.getY() < paddleYEdge + 4){ 			
+				vy = -vy;
+				bounceClip.play();
+			} else {
+				vy = -vy;
+				bounceClip.play();
+			}
+		} else if ((collider != null) && (collider != info)) {
 			remove(collider);
 			vy = -vy;
+			brickCount--;
+			score++;
+			remove(info);
+			drawInfo();
+			bounceClip.play();
+			if (brickCount == 0) {
+				displayWinner();
+			}
 		}
+	}
+	
+	private void displayWinner() {
+		remove(ball);
+		congrats.play();
+		GLabel winner = new GLabel("YOU WIN!! CONGRATS!");
+		winner.setColor(Color.RED);
+		winner.setFont("ComicSans-bold-36");
+		add(winner, (getWidth() - winner.getWidth()) / 2, (getHeight() - winner.getAscent()) / 2);
+		waitForClick();
+		run();
 	}
 	
 	private GObject getCollidingObject() {
@@ -99,8 +180,17 @@ public class Breakout extends GraphicsProgram {
 	
 	private void setup() {
 		drawBricks();
+		drawInfo();
 		drawPaddle();
+		drawWelcome();
 		drawBall();
+	}
+	
+	private void drawInfo() {
+		info = new GLabel(" Credits : " + credits + "                                  Score : " + score);
+		info.setColor(Color.WHITE);
+		info.setFont("Arial-14");
+		add(info, 0, getHeight() - info.getAscent() / 2);
 	}
 	
 	private void drawBall() {
@@ -110,6 +200,20 @@ public class Breakout extends GraphicsProgram {
 		ball.setFilled(true);
 		ball.setFillColor(Color.WHITE);
 		add(ball);
+	}
+	
+	private void drawWelcome() {
+		GLabel welcome = new GLabel("WELCOME TO BREAKOUT");
+		GLabel welcome2 = new GLabel("Click anywhere to start!");
+		welcome.setColor(Color.WHITE);
+		welcome2.setColor(Color.WHITE);
+		welcome.setFont("TimesNewRoman-24");
+		welcome.setFont("TimesNewRoman-24");
+		add(welcome, (getWidth() - welcome.getWidth()) / 2, getHeight() / 2);
+		add(welcome2, (getWidth() - welcome2.getWidth()) / 2, getHeight() / 2 + welcome.getHeight());
+		waitForClick();
+		remove(welcome);
+		remove(welcome2);
 	}
 	
 	private void drawPaddle() {
